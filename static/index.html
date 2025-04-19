@@ -6,43 +6,21 @@
   <title>Stock Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-    th, td {
-      border: 1px solid #ddd;
-      padding: 8px;
-      text-align: center;
-    }
-    th {
-      background-color: #f2f2f2;
-    }
-    #chartContainer {
-      width: 100%;
-      height: 400px;
-      margin-bottom: 40px;
-    }
-    button, select {
-      padding: 10px 20px;
-      font-size: 16px;
-      margin-bottom: 20px;
-      cursor: pointer;
-    }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+    th { background-color: #f2f2f2; }
+    #chartContainer { width: 100%; height: 400px; margin-bottom: 40px; }
+    button, select { padding: 10px 20px; font-size: 16px; margin-bottom: 20px; cursor: pointer; }
   </style>
 </head>
 <body>
   <h1>Stock Dashboard</h1>
 
-  <!-- Button to Fetch Real-time Data -->
+  <!-- Fetch Real-time Data Button -->
   <button id="fetchButton">Fetch Real-time Data</button>
 
-  <!-- Dropdown for Symbol Selection -->
+  <!-- History Chart Selector -->
   <label for="symbolSelector"><strong>Select Stock:</strong></label>
   <select id="symbolSelector" onchange="loadHistoryChart()">
     <option value="AAPL">AAPL</option>
@@ -72,58 +50,62 @@
   </table>
 
   <script>
-    async function fetchStockData() {
-      const response = await fetch("http://localhost:5000/api/stocks");
-      const data = await response.json();
-      renderTable(data);
+    // Fetch real-time data then re-render table and chart
+    async function fetchAndRenderAll() {
+      await fetch('http://localhost:5000/api/fetch-realtime', { method: 'POST' });
+      await fetchStockData();
+      loadHistoryChart();
     }
 
-    function renderTable(data) {
-      const tbody = document.querySelector("#stockTable tbody");
-      tbody.innerHTML = "";
-      data.forEach(stock => {
-        const row = `
-          <tr>
-            <td>${stock.symbol}</td>
-            <td>${stock.open}</td>
-            <td>${stock.high}</td>
-            <td>${stock.low}</td>
-            <td>${stock.close}</td>
-            <td>${stock.volume}</td>
-            <td>${stock.timestamp}</td>
-          </tr>
+    // Table fetch & render (show only latest per symbol)
+    async function fetchStockData() {
+      const res = await fetch('http://localhost:5000/api/stocks');
+      const data = await res.json();
+      // data sorted by timestamp desc; pick first occurrence of each symbol
+      const seen = new Set();
+      const unique = data.filter(item => {
+        if (seen.has(item.symbol)) return false;
+        seen.add(item.symbol);
+        return true;
+      });
+      renderTable(unique);
+    }
+
+    function renderTable(rows) {
+      const tbody = document.querySelector('#stockTable tbody');
+      tbody.innerHTML = '';
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${r.symbol}</td>
+          <td>${parseFloat(r.open_price).toFixed(2)}</td>
+          <td>${parseFloat(r.high_price).toFixed(2)}</td>
+          <td>${parseFloat(r.low_price).toFixed(2)}</td>
+          <td>${parseFloat(r.close_price).toFixed(2)}</td>
+          <td>${parseInt(r.volume).toLocaleString()}</td>
+          <td>${new Date(r.timestamp).toUTCString()}</td>
         `;
-        tbody.insertAdjacentHTML("beforeend", row);
+        tbody.appendChild(tr);
       });
     }
 
+    // History chart fetch/render
     async function loadHistoryChart() {
-      const symbol = document.getElementById("symbolSelector").value;
+      const symbol = document.getElementById('symbolSelector').value;
       const res = await fetch(`http://localhost:5000/api/history/${symbol}`);
       const data = await res.json();
-      const labels = data.map(item => item.timestamp);
-      const closes = data.map(item => item.close);
+      const labels = data.map(i => i.timestamp);
+      const closes = data.map(i => parseFloat(i.close_price));
 
-      const ctx = document.getElementById("stockChart").getContext("2d");
+      const ctx = document.getElementById('stockChart').getContext('2d');
       if (window.historyChart) window.historyChart.destroy();
 
       window.historyChart = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels,
-          datasets: [{
-            label: `${symbol} Close Price`,
-            data: closes,
-            borderColor: "green",
-            fill: false,
-            tension: 0.2
-          }]
-        },
+        type: 'line',
+        data: { labels, datasets: [{ label: `${symbol} Close Price`, data: closes, borderColor: 'green', fill: false, tension: 0.2 }] },
         options: {
           responsive: true,
-          plugins: {
-            legend: { display: true }
-          },
+          plugins: { legend: { display: true } },
           scales: {
             x: { ticks: { maxTicksLimit: 10 }, title: { display: true, text: 'Timestamp' } },
             y: { title: { display: true, text: 'Close Price' } }
@@ -132,12 +114,8 @@
       });
     }
 
-    document.getElementById("fetchButton").addEventListener("click", fetchStockData);
-
-    document.addEventListener("DOMContentLoaded", () => {
-      fetchStockData();
-      loadHistoryChart();
-    });
+    document.getElementById('fetchButton').addEventListener('click', fetchAndRenderAll);
+    document.addEventListener('DOMContentLoaded', fetchAndRenderAll);
   </script>
 </body>
 </html>
